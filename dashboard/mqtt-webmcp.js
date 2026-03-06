@@ -22,6 +22,7 @@ const state = {
   reconnect: null,
   sidebarCollapsed: { topics: false },
   topicMsgCounts: {},
+  deviceStreams: {},  // deviceId → stream URL, populated from device announcements
 };
 
 let _toolLogId = 0;
@@ -168,8 +169,12 @@ function connect(url) {
 
     if (topic.startsWith("devices/")) {
       try {
-        const { topics } = JSON.parse(msg);
+        const { topics, stream } = JSON.parse(msg);
         for (const t of topics) trackTopic(t);
+        if (stream) {
+          const deviceId = topic.slice("devices/".length);
+          state.deviceStreams[deviceId] = stream;
+        }
         if (!state.selected && state.seenTopics.length > 0) selectTopic(state.seenTopics[0]);
       } catch (e) { console.warn("Failed to parse device announcement JSON", e); }
       return;
@@ -220,6 +225,7 @@ function resetConnectionState() {
   state.onceCallbacks = {};
   state.topicListeners = {};
   state.topicMsgCounts = {};
+  state.deviceStreams = {};
   updateStatusDot("idle");
   el("connect-btn").textContent = "Connect";
   unpinAllTopics();
@@ -422,6 +428,14 @@ function selectTopic(topic) {
   renderTopicPanel(topic);
 }
 
+function getTopicStream(topic) {
+  if (!topic.startsWith("devices/")) return null;
+  const rest = topic.slice("devices/".length);
+  const slash = rest.indexOf("/");
+  if (slash === -1) return null;
+  return state.deviceStreams[rest.slice(0, slash)] || null;
+}
+
 // Motor D-pad command payloads. Speed is in [0, 1].
 const MOTOR_CMDS = {
   forward:  (s) => `{"left":${s},"right":${s}}`,
@@ -455,6 +469,18 @@ function _dpadStop(topic) {
 function renderTopicPanel(topic) {
   const main = el("main-panel");
   const isMotorTopic = topic.endsWith("/motors/command");
+  const streamUrl = getTopicStream(topic);
+
+  const cameraHtml = streamUrl ? `
+    <div class="divider-label">Camera</div>
+    <div class="camera-section">
+      <img class="camera-stream" id="camera-stream-img" src="${escHtml(streamUrl)}" alt="Camera stream">
+      <div class="camera-stream-fallback" id="camera-stream-fallback" hidden>
+        Stream blocked (mixed content).
+        <a class="camera-stream-link" href="${escHtml(streamUrl)}" target="_blank" rel="noopener">Open in new tab ↗</a>
+      </div>
+    </div>
+  ` : "";
 
   const dpadHtml = isMotorTopic ? `
     <div class="divider-label">Drive</div>
@@ -498,6 +524,8 @@ function renderTopicPanel(topic) {
       </span>
     </div>
 
+    ${cameraHtml}
+
     ${dpadHtml}
 
     <div class="divider-label">Publish</div>
@@ -525,6 +553,15 @@ function renderTopicPanel(topic) {
       <span class="repeat-unit">Hz</span>
     </div>
   `;
+
+  const streamImg = el("camera-stream-img");
+  if (streamImg) {
+    streamImg.addEventListener("error", () => {
+      streamImg.hidden = true;
+      const fallback = el("camera-stream-fallback");
+      if (fallback) fallback.hidden = false;
+    });
+  }
 
   el("btn-subscribe-once").addEventListener("click", () => doSubscribeOnce(topic));
   el("btn-watch").addEventListener("click", () => startWatching(topic));
@@ -863,6 +900,22 @@ const TOOLS = [
       if (!isConnected()) throw new Error("Not connected");
       state.mqttClient.publish(topic, payload);
       return { published: true, topic, payload };
+    },
+  },
+  {
+    name: "get_camera_stream",
+    description: "Get the MJPEG stream URL for a device, if it has a camera. Returns the URL to open in a browser or embed in an <img> tag.",
+    parameters: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "Any MQTT topic belonging to the device, e.g. devices/d4e9f4a2a044/motors/command" },
+      },
+      required: ["topic"],
+    },
+    handler: async ({ topic }) => {
+      const url = getTopicStream(topic);
+      if (!url) return { error: "No camera stream available for this device" };
+      return { stream_url: url };
     },
   },
   {

@@ -15,7 +15,7 @@ MONITOR    = arduino-cli monitor --port "$(PORT)" --config baudrate=115200,dtr=o
 # inner double quotes produce C string literals for the -D defines.
 BUILD_FLAGS := 'build.extra_flags=-DWIFI_SSID="$(strip $(WIFI_SSID))" -DWIFI_PASS="$(strip $(WIFI_PASS))" -DMQTT_IP="$(strip $(MQTT_IP))"'
 
-.PHONY: help setup mqtt preview proxy compile flash ota monitor flash-monitor flash-car ota-car
+.PHONY: help setup mqtt preview proxy compile flash ota monitor flash-monitor flash-car ota-car flash-cam-video ota-cam-video
 
 help:
 	@echo ""
@@ -34,8 +34,12 @@ help:
 	@echo "  \033[36mflash-monitor\033[0m  flash + open serial monitor"
 	@echo ""
 	@echo "\033[2mFirmware — Car (motor control)\033[0m"
-	@echo "  \033[36mflash-car\033[0m      Compile + upload esp32_car over USB"
-	@echo "  \033[36mota-car\033[0m        Compile + upload esp32_car over WiFi"
+	@echo "  \033[36mflash-car\033[0m          Compile + upload esp32_car over USB"
+	@echo "  \033[36mota-car\033[0m            Compile + upload esp32_car over WiFi"
+	@echo ""
+	@echo "\033[2mFirmware — Car + Camera (MJPEG stream)\033[0m"
+	@echo "  \033[36mflash-cam-video\033[0m    Compile + upload esp32_cam_video over USB"
+	@echo "  \033[36mota-cam-video\033[0m      Compile + upload esp32_cam_video over WiFi"
 	@echo ""
 	@echo "  Any target accepts \033[36mSKETCH=<name>\033[0m to select a firmware sketch."
 	@echo ""
@@ -98,6 +102,12 @@ flash-car:
 
 ota-car:
 	$(MAKE) ota SKETCH=esp32_car
+
+flash-cam-video:
+	$(MAKE) flash SKETCH=esp32_cam_video
+
+ota-cam-video:
+	$(MAKE) ota SKETCH=esp32_cam_video
 
 monitor:
 	$(MONITOR)
